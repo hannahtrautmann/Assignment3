@@ -1,0 +1,236 @@
+---
+title: "Assignment 3 - An Investigation into Federal Spending in Science-Related Fields"
+author: "Hannah Trautmann"
+date: "April 4, 2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Loading Data
+
+First, provided data was loaded into Rstudio. Three individual comma-separated value documents were included: climate spending, energy spending, and research and development spending. All 3 files included columns for department, year, and dollar values for money spent. The research and development spending further divided spending to include budget, total outlays, discretionary outlays, and GDP. 
+
+```{r loading data, include=FALSE}
+library("tidyverse")
+climate_spending <- read_csv("climate_spending.csv")
+energy_spending <- read_csv("energy_spending.csv")
+fed_r_d_spending <- read_csv("fed_r_d_spending.csv")
+```
+
+
+# Total Spending
+## Total Spending over Time
+
+Total spending was compared between the three major categories of spending: climate, research and development, and energy. The data were plotted over time for years in which numbers were provided for all three categories. For research and development, R&D budget was used for this purpose. 
+
+```{r total spending}
+energy_and_climate_spending <- left_join(climate_spending, energy_spending, by="year")
+total_spending <- left_join(energy_and_climate_spending, fed_r_d_spending, by = "year")
+
+summarized_spending_by_year_by_type <- total_spending %>%
+  group_by(year) %>%
+  summarise(sum_energy = sum(energy_spending), sum_climate = sum(gcc_spending), sum_rd = sum(rd_budget))
+
+summarized_spending_by_year_long <- gather(summarized_spending_by_year_by_type,
+                                           key="spending_type",
+                                           value="dollars_spent",
+                                           sum_energy:sum_rd)
+
+sum_spending_legend <- filter(summarized_spending_by_year_long, year == max(year)) %>%
+  arrange(desc(dollars_spent)) %>%
+  pull(spending_type)
+
+ggplot(summarized_spending_by_year_long, aes(year, dollars_spent, color=spending_type)) + geom_line() +
+  scale_y_log10() +
+  scale_color_viridis_d(breaks = sum_spending_legend)
+
+summarized_rd <- filter(summarized_spending_by_year_long, spending_type == "sum_rd")
+summarized_energy <- filter(summarized_spending_by_year_long, spending_type == "sum_energy")
+summarized_climate <- filter(summarized_spending_by_year_long, spending_type == "sum_climate")
+```
+
+
+It does not appear as though the there is a significant change in any of the spending types over time. To confirm or disprove this observation, correlation tests were done for all three spending types. 
+
+In fact, the correlation between year and spending for research and development is `r cor(summarized_rd$year, summarized_rd$dollars_spent)`, with a p-value of `r cor.test(summarized_rd$year, summarized_rd$dollars_spent)[["p.value"]]`. This indicates that very little, if any change has occured in R&D spending.
+
+The correlation between year and spending for energy is `r cor(summarized_energy$year, summarized_energy$dollars_spent)` with a p-value of `r cor.test(summarized_energy$year, summarized_energy$dollars_spent)[["p.value"]]`. This indicates a positive correlation between year and energy spending, even though the trend is not as obvious on the plot.
+
+The correlation between year and spending for climate is `r cor(summarized_climate$year, summarized_climate$dollars_spent)` with a p-value of `r cor.test(summarized_climate$year, summarized_climate$dollars_spent)[["p.value"]]`. This indicates a weaker correlation, though a minimal increase in spending appears to have occurred.
+
+
+##Total Spending Means
+Total spending was further analyzed by mathematical function, to determine if, on average, the total spending differed between the three major categories. To do this, a boxplot that shows median and quartiles (over the years) for each category was created.
+
+```{r total spending calculations}
+ggplot(summarized_spending_by_year_long, aes(spending_type, dollars_spent)) +
+  geom_boxplot() +
+  scale_y_log10()
+
+summarized_spending_total <- summarized_spending_by_year_long %>%
+  group_by(spending_type) %>%
+  summarise(mean_spending = mean(dollars_spent))
+
+```
+
+```{r mean total spending}
+
+climate_vector <- c(summarized_climate$dollars_spent)
+
+energy_vector <- c(summarized_energy$dollars_spent)
+
+rd_vector <- c(summarized_rd$dollars_spent)
+```
+
+
+There is in fact a significant difference in spending between the three categories. The p-value when doing a t-test between mean climate and energy spending between 2000 and 2016 is `r t.test(climate_vector, energy_vector)[["p.value"]] `, between mean climate spending and research and development is `r t.test(climate_vector, rd_vector)[["p.value"]]`, and between mean energy and research and development is `r t.test(rd_vector, energy_vector)[["p.value"]]`.
+
+
+# Climate Spending
+## Climate Spending over Time
+Taking a closer look at climate spending, we can determine if the type of spending has changed significantly over time, by looking specifically at the breakdown by government departiment. This may be particularly interesting because climate change has become a major political issue in recent years, and science has indicated that it is a very urgent issue.
+
+```{r clim spending time}
+clim_spending_legend <- filter(climate_spending, year == max(year)) %>%
+  arrange(desc(gcc_spending)) %>%
+  pull(department)
+
+ggplot(climate_spending, aes(year, gcc_spending, color=department)) +
+  geom_point() + geom_smooth(method = "lm") +
+  scale_y_log10() +
+  scale_color_viridis_d(breaks = clim_spending_legend)
+```
+
+NASA spending appears not to have change substantially and the "all other" category looks to have gone down substantially. However, there appears to be increases in spending in all the other categories. Because in the total spending section we did not see a substantial overall change in spending on climate, this likely indicates that money was re-allocated from other organizations to the main ones outlined here, from the early 2000s through today.
+
+```{r climate corr time}
+climate_all_other <- filter(climate_spending, department == "All Other")
+climate_interior <- filter(climate_spending, department == "Interior")
+
+```
+
+
+Indeed, the correlation between year and "all other" spending is `r cor(climate_all_other$year, climate_all_other$gcc_spending)` with a p-value of
+`r cor.test(climate_all_other$year, climate_all_other$gcc_spending)[["p.value"]]`, indicating a significant decrease in spending.
+
+There are many categories that appear to have shown complementary increases during this same time frame. Of specific note is spending by the interior, which has a positive correlation coefficient of `r cor(climate_interior$year, climate_interior$gcc_spending)` with a p-value of
+`r cor.test(climate_interior$year, climate_interior$gcc_spending)[["p.value"]]`.
+
+##Climate Spending Distribution
+Another way to analyze the data is to look at the composition of money spent on climate at our earliest time point compared with our most recent time point. This allows us to visualize how the money has been re-allocated.
+
+```{r distrib}
+early_late_climate <- filter(climate_spending, year %in% c(min(year), max(year)))
+
+ggplot(early_late_climate, aes(factor(year), gcc_spending, fill=department)) +
+  geom_bar(stat = "identity", width = 0.7)
+```
+
+It is evident that while almost every category has grown in size, the "all other" category has all but disappeared.
+
+#Energy Spending
+##Energy Spending over Time
+
+Energy spending by department is visualized over time, as seen below. Although there appears to be an increase in many of the departments, the most apparent increase is in nuclear energy spending.
+
+```{r energy over time}
+energy_spending_legend <- filter(energy_spending, year == max(year)) %>%
+  arrange(desc(energy_spending)) %>%
+  pull(department)
+
+ggplot(energy_spending, aes(year, energy_spending, color=department)) +
+  geom_point() + geom_smooth(method = "lm") +
+  scale_y_log10() +
+  scale_color_viridis_d(breaks = energy_spending_legend)
+
+nuclear_energy <- filter(energy_spending, department == "Nuclear Energy")
+
+
+```
+
+##Nuclear Energy Spending
+
+The correlation coefficient of Nuclear Energy spending with time is `r cor(nuclear_energy$year, nuclear_energy$energy_spending)` with a p-value of
+`r cor.test(nuclear_energy$year, nuclear_energy$energy_spending)[["p.value"]]`, indicating a significant increase in spending.
+
+In fact, the spending at the earliest time point was only `r filter(nuclear_energy, year == min(year)) %>% pull(energy_spending)` dollars, while the spending at the latest time point was `r filter(nuclear_energy, year == max(year)) %>% pull(energy_spending)` dollars.
+
+```{r fossils}
+fossil_energy <- filter(energy_spending, department == "Fossil Energy")
+```
+
+
+##Fossil Energy Spending
+As the country moves more towards nuclear energy, it is also interesting to look at spending on fossil fuels, which has historically been one of the more popular energy forms. It is not easy to see a change on the graph above, but a correlation test indicates a correlation coefficient of fossil spending with time as `r cor(fossil_energy$year, fossil_energy$energy_spending)` with a p-value of
+`r cor.test(fossil_energy$year, fossil_energy$energy_spending)[["p.value"]]`. This indicates that there has been no significant change in fossil energy spending over the years analyzed here. Thus, the country continues its high use of fossil energies, even as newer energies become more popular. 
+
+#Research and Development Spending
+##R&D Spending over Time
+In our overall comparison, we saw no significant change in spending over time for total spending on research and development. However, breaking down by budget per department, some changes are evident, including apparent increases and decreases. As the number of possible departments to analyze is so large, a few select departments of interest have been chosen. 
+
+```{r rd over time, warning=FALSE, message=FALSE}
+rd_spending_legend <- filter(fed_r_d_spending, year == max(year)) %>%
+  arrange(desc(rd_budget)) %>%
+  pull(department)
+
+ggplot(fed_r_d_spending, aes(year, rd_budget, color=department)) +
+  geom_point() + geom_smooth(method = "lm") +
+  scale_y_log10() +
+  scale_color_viridis_d(breaks = rd_spending_legend)
+```
+
+##NSF Budget
+Increases over time appear for a number of departments. Of particular interest to the researcher is the NSF budget, as that is the source of funding for this research. 
+
+```{r nsf}
+nsf_budget <- filter(fed_r_d_spending, department == "NSF")
+```
+
+The correlation coefficient between NSF spending and time is `r cor(nsf_budget$year, nsf_budget$rd_budget)` with a p-value of
+`r cor.test(nsf_budget$year, nsf_budget$rd_budget)[["p.value"]]`. This indicates a strong increase in spending over time. This leaves the researchers feeling hopeful that they will be able to continue their research if this trend persists.
+
+##EPA Budget
+The most evident decrease in research and development budget appears for the EPA. This is interesting as we noted an increase in climate spending over time, and these two are generally believed to be related.
+
+```{r epa}
+epa_budget <- filter(fed_r_d_spending, department == "EPA")
+```
+
+The correlation coefficient between EPA spending and time is `r cor(epa_budget$year, epa_budget$rd_budget)` with a p-value of
+`r cor.test(epa_budget$year, epa_budget$rd_budget)[["p.value"]]`. This indicates a weak but statistically significant decrease in EPA spending over time. Perhaps this apparent inconsistency with the climate data is because climate spending has moved to climate-specific organizations rather than the broad EPA. It is also worthwhile to note that the years of data is larger for this EPA spending than it was for the climate spending section. 
+
+##R&D Budget vs. GDP
+It may also be informative to plot the budget of research and development vs. the GDP, to determine whether the increase in spending we see over time is related to the nation's overall wealth. 
+
+```{r rd vs. gdp, warning=FALSE, message=FALSE}
+rd_gdp_legend <- filter(fed_r_d_spending, year == max(year)) %>%
+  arrange(desc(rd_budget)) %>%
+  pull(department)
+
+ggplot(fed_r_d_spending, aes(gdp, rd_budget, color=department)) +
+  geom_point() + geom_smooth(method = "lm") +
+  scale_y_log10() +
+  scale_color_viridis_d(breaks = rd_gdp_legend)
+```
+
+Indeed, the graph shows very similar trends in every department as the graph plotting budget vs. time. Thus, research and development spending is closely linked to GDP. 
+
+The proposed increase in GDP over time can be confirmed by plotting the two, as seen below.
+
+```{r gdp vs year, warning=FALSE, message=FALSE}
+ggplot(fed_r_d_spending, aes(year, gdp)) +
+  geom_point() + geom_smooth(method = "lm")
+```
+
+The obvious correlation on this plot is confirmed by analyzing statistically. The correlation is `r cor(fed_r_d_spending$year, fed_r_d_spending$gdp)` with a p-value of
+`r cor.test(fed_r_d_spending$year, fed_r_d_spending$gdp)[["p.value"]]`.
+
+#Conclusions
+Overall, there was a great deal of information gained from analyzing this large dataset. A general trend towards an increase in spending on sciences is promising for the future of our fields, but there can be large fluctuations by year and by department. The safest departments to look for employment are likely NASA and DOD as they consistently have large budgets without substantial decreases in any spending types. 
+
